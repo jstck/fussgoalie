@@ -1,141 +1,141 @@
 #include <avr/io.h>
 
-#define MAX_GOAL_TIME 1.0 //Max time in seconds for a goal to be considered
-#define MIN_GOAL_INTERVAL 1  //Minimum time between goals (integer)
+#define MAX_GOAL_TIME 1.0   // Max time in seconds for a goal to be considered (float)
+#define MIN_GOAL_INTERVAL 1  // Minimum time in seconds between goals (integer)
 
-#define PIN_GOAL1_FRONT 18
-#define PIN_GOAL1_BACK 19
-#define PIN_GOAL2_FRONT 20
-#define PIN_GOAL2_BACK 21
+#define GOAL_A_INDEX 0
+#define GOAL_B_INDEX 1
 
-#define GOAL1_COLOR "YELLOW"
-#define GOAL2_COLOR "BLACK"
+#define GOAL_A_PIN_FRONT 18
+#define GOAL_A_PIN_BACK  19
+#define GOAL_B_PIN_FRONT 20
+#define GOAL_B_PIN_BACK  21
 
-#define INT_GOAL1_FRONT 5
-#define INT_GOAL1_BACK 4
-#define INT_GOAL2_FRONT 3
-#define INT_GOAL2_BACK 2
+#define GOAL_A_INT_FRONT 5
+#define GOAL_A_INT_BACK 4
+#define GOAL_B_INT_FRONT 3
+#define GOAL_B_INT_BACK 2
 
-#define GOAL1_DISTANCE 0.0326
-#define GOAL2_DISTANCE 0.0339
+#define LOOP_DELAY 100
 
-long goal1_fronttime, goal2_fronttime, last_score;
+struct Goal {
+  long time_front;  // us
+  long time_back;  // us
+  long time_last_score;  // us
+  float velocity_m_s;  // m/s
+  float velocity_km_h;  // km/h
 
-void goal1_front()
-{
-  goal1_fronttime = micros();
-  noInterrupts();
-  Serial.print("goal1 front ");
-  Serial.println(goal1_fronttime);
-  interrupts();
+  const float distance;  // cm
+  const char *color;
+};
+
+// Global variables
+boolean g_time_last_score = 0;
+
+Goal g_goals[2] = {
+  {0, 0, 0, 0.0, 0.0, 0.0326, "yellow"},
+  {0, 0, 0, 0.0, 0.0, 0.0339, "black"}
+};
+
+// Goal A interrupts
+void goal_a_int_front() {
+  g_goals[GOAL_A_INDEX].time_front = micros();
 }
 
-void goal2_front()
-{
-  goal2_fronttime = micros();  
-  noInterrupts();
-  Serial.print("goal2 front ");
-  Serial.println(goal2_fronttime);
-  interrupts();
+void goal_a_int_back() {
+  g_goals[GOAL_A_INDEX].time_back = micros();
+  score_goal(GOAL_A_INDEX);
 }
 
-void goal1_back()
-{
-  long backtime;
-  backtime = micros();
-  noInterrupts();
-  Serial.print("goal1 back  ");
-  Serial.println(backtime);
-  score_goal(1, backtime);
-  goal1_fronttime=0;
-  interrupts();
+// Goal B interrupts
+void goal_b_int_front() {
+  g_goals[GOAL_B_INDEX].time_front = micros();
 }
 
-void goal2_back()
-{
-  long backtime;
-  backtime = micros();
-  noInterrupts();
-  Serial.println("goal2 back  ");
-  Serial.println(backtime);
-  score_goal(2, backtime);
-  goal2_fronttime=0;
-  interrupts();
+void goal_b_int_back() {
+  g_goals[GOAL_B_INDEX].time_back = micros();
+  score_goal(GOAL_B_INDEX);
 }
 
-int score_goal(int goal, long backtime)
-{
-  float t, v, v_k, d;
-  long fronttime;
-  
-  //Do not count if last goal was too recent (bouncing ball)
-  if( (backtime-last_score) < (1000000*MIN_GOAL_INTERVAL))
-  {
-    return 0; 
+// Score a goal (called from interrupt)
+void score_goal(int index) {
+  Goal &goal = g_goals[index];
+  float time_diff;  // seconds
+
+  // Do not count if last goal was too recent (bouncing ball)
+  if((goal.time_last_score - g_time_last_score) < (1000000 * MIN_GOAL_INTERVAL)) {
+    return;
   }
 
-  fronttime = (goal==1)?goal1_fronttime:goal2_fronttime;
-  
-  //Do not count if the front sensor has not triggered yet
-  if(fronttime==0)
-  {
-    return 0; 
-  }
-    
-  d = (goal==1)?GOAL1_DISTANCE:GOAL2_DISTANCE;
-  
-  t = 0.000001 * (backtime - fronttime);
-
-  if(t>MAX_GOAL_TIME)
-  {
-    return 0; 
+  // Do not count if the front sensor has not triggered yet
+  if(goal.time_front == 0) {
+    return;
   }
 
-  v = d / t;
-  
-  v_k = v * 3.6;
-  
-  Serial.print((goal==1)?GOAL1_COLOR:GOAL2_COLOR);
-  Serial.print(" GOAL: ");
-  Serial.println(v_k);
-  Serial.println(backtime - fronttime);
-  
-  last_score = backtime; 
-  
-  return 1;
+  // ms -> s
+  time_diff = 0.000001 * (goal.time_back - goal.time_front);
+
+  if(time_diff > MAX_GOAL_TIME) {
+    return;
+  }
+
+  goal.velocity_m_s = goal.distance / time_diff;  // m/s
+  goal.velocity_km_h = goal.velocity_m_s * 3.6;  // m/s -> km/h
+  goal.time_last_score = goal.time_back;
 }
 
-void setup()
-{
+// Check if any goal was scored (called from main loop)
+void check_goals() {
+  for (int index = 0; index < 2; index++) {
+    Goal &goal = g_goals[index];
+
+    if (goal.time_last_score > g_time_last_score) {
+      Serial.print("GOAL! (color: ");
+      Serial.print(goal.color);
+      Serial.print(", velocity (m/s): ");
+      Serial.print(goal.velocity_m_s);
+      Serial.print(", velocity (km/h): ");
+      Serial.print(goal.velocity_km_h);
+      Serial.print("m/s, time: ");
+      Serial.print(goal.time_back - goal.time_front);
+      Serial.println("us");
+
+      goal.time_front = 0;
+      goal.time_back = 0;
+      goal.time_last_score = 0;
+      goal.velocity_m_s = 0.0;
+      goal.velocity_km_h = 0.0;
+
+      g_time_last_score = micros();
+      break;
+    }
+  }
+}
+
+// Setup
+void setup() {
   Serial.begin(115200);
-  Serial.println("Initializing");
-  
-  noInterrupts();
-  
-  goal1_fronttime = 0;
-  goal2_fronttime = 0;
-  last_score = 0;
+  Serial.println("Initializing...");
 
-  
-  pinMode(PIN_GOAL1_FRONT, INPUT);
-  pinMode(PIN_GOAL1_BACK, INPUT);
-  pinMode(PIN_GOAL2_FRONT, INPUT);
-  pinMode(PIN_GOAL2_BACK, INPUT);
-  
-  
-  attachInterrupt(INT_GOAL1_FRONT, goal1_front, RISING);
-  attachInterrupt(INT_GOAL1_BACK, goal1_back, RISING);
-  attachInterrupt(INT_GOAL2_FRONT, goal2_front, RISING);
-  attachInterrupt(INT_GOAL2_BACK, goal2_back, RISING);
- 
+  noInterrupts();
+
+  pinMode(GOAL_A_PIN_FRONT, INPUT);
+  pinMode(GOAL_A_PIN_BACK, INPUT);
+  pinMode(GOAL_B_PIN_FRONT, INPUT);
+  pinMode(GOAL_B_PIN_BACK, INPUT);
+
+  attachInterrupt(GOAL_A_INT_FRONT, goal_a_int_front, RISING);
+  attachInterrupt(GOAL_A_INT_BACK, goal_a_int_back, RISING);
+  attachInterrupt(GOAL_B_INT_FRONT, goal_b_int_front, RISING);
+  attachInterrupt(GOAL_B_INT_BACK, goal_b_int_back, RISING);
+
   interrupts();
-  Serial.println("Done."); 
-  
+
+  Serial.println("Done.");
 }
 
-
-
-void loop()
-{
-  
+// Main loop
+void loop() {
+  check_goals();
+  delay(LOOP_DELAY);
 }
