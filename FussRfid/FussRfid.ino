@@ -10,7 +10,7 @@
 
 //Chip select pins of the different RFID reader devices
 #define NUM_READERS 4
-const int readers_sda[NUM_READERS] = { 46, 47, 48, 49};
+const int readers_select[NUM_READERS] = { 46, 47, 48, 49};
 
 
 
@@ -19,7 +19,7 @@ const int laser_pins[4] = {18, 19, 20, 21};
 const int laser_irq[4] = {2, 3, 4, 5};
 
 const int resetPin = 44; //Actual reset pin
-//const int irqPin = 45; //Not used
+const int irqPin = 45; //Not used
 
 const int reasonableDelay = 25;
 const int resetDelay = 100;
@@ -43,9 +43,9 @@ void DisableAllRFID(boolean initPins=false)
   {
     if(initPins)
     {
-      pinMode(readers_sda[i],OUTPUT);
+      pinMode(readers_select[i],OUTPUT);
     }
-    digitalWrite(readers_sda[i], CHIP_INACTIVE);     
+    digitalWrite(readers_select[i], CHIP_INACTIVE);
   }  
 }
 
@@ -53,6 +53,7 @@ void setup()
 {
   Serial.begin(115200);
   DisableAllRFID(true);
+  pinMode(irqPin, INPUT);
 
   Serial.println("INFO;SPI");
   SPI.begin();
@@ -71,7 +72,8 @@ void setup()
   {
     Serial.print("INFO;RFID create");
     Serial.println(i);
-    rfids[i] = new MFRC522(readers_sda[i], resetPin);
+//    rfids[i] = new MFRC522(readers_select[i], resetPin);
+    rfids[i] = new MFRC522(readers_select[i], resetPin);
     delay(reasonableDelay);
   }
   DisableAllRFID(true); //Disable stuff again in case we're with the broken MFRC522 library
@@ -169,8 +171,22 @@ void main_reg()
   for(int i=0; i<NUM_READERS; i++)
   {
     rfid=rfids[i];
-
-    delay(reasonableDelay);
+    
+//DEBUGGELING STUFF
+//
+//    Serial.print(i);
+//    Serial.print(": ");
+//    digitalWrite(readers_select[i], CHIP_ACTIVE);     
+//    delay(100);
+//    for(int reg=0x00; reg<=0x0E; reg++)
+//    {
+//      unsigned char c = rfid->PCD_ReadRegister(reg << 1);
+//      if(c<0x10) Serial.print("0");
+//      Serial.print(c, HEX);
+//      Serial.print(" ");
+//    }
+//    Serial.println();
+//    delay(reasonableDelay);
     
     if( rfid->PICC_IsNewCardPresent() )
     {
@@ -189,6 +205,7 @@ void main_reg()
         Serial.println();
       }
     }
+//    digitalWrite(readers_select[i], CHIP_INACTIVE);     
 
     delay(reasonableDelay);
   }
