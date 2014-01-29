@@ -1,0 +1,27 @@
+Pins and stuff.
+
+From the RFID boards:
+
+"Blue bunch": SPI stuff
+
+Purple: MISO -> 50
+Green: MOSI -> 51
+Yellow: SCK -> 52
+
+"White bunch": Chip select pins
+
+Brown: reader0 -> 46
+Yellow: reader1 -> 47
+Blue: reader2 -> 48
+Green: reader3 -> 49
+
+"Black bunch": Misc stuff
+
+Brown: reset -> 44
+White: irq -> 45 (not actually used
+
+Others: power
+
+Red-orange: 5V (via 3.3V regulator)
+Black: ground
+
